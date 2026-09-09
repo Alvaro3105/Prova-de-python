@@ -1,58 +1,57 @@
+from sqlalchemy import distinct, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from database import db
-from datetime import datetime 
 from models.models import Projeto
 
 
-class repositorio():
+class ProjetoRepository:
     @staticmethod
-    def index():
-        return Projeto.query.order_by(Projeto.nome).all()
-
-    @staticmethod
-    def listar_projetos(name): 
-        Projeto = Projeto.query.get(name)
+    def listar(nome=None, departamento=None, ordenar=False):
+        consulta = select(Projeto)
         if nome:
-            projetos = Projeto.query.filter(Projeto.nome.like(f"%{nome}%")).all()
+            consulta = consulta.where(Projeto.nome.like(f"%{nome}%"))
         elif departamento:
-            projetos = Projeto.query.filter_by(departamento=departamento).all()
-        else:
-            projetos = Projeto.query.all()
-        return  Projeto
-    
-    @staticmethod
-    def buscar_projetos(id):
-       return  Projeto.query.get(id)
+            consulta = consulta.where(Projeto.departamento == departamento)
+        if ordenar:
+            consulta = consulta.order_by(Projeto.nome)
+        return db.session.execute(consulta).scalars().all()
 
     @staticmethod
-    def cadastrar_projeto(projeto):
-        return Projeto.query.filter_by(nome=dados["nome"]).first()
-        db.session.add(projeto)
-        db.session.commit()
-    
-    @staticmethod
-    def atualizar(id, projeto): 
-        projeto = Projeto.query.get(id)
-        outro = Projeto.query.filter_by(nome=dados["nome"]).first()
-        db.session.commit()
+    def buscar(id):
+        return db.session.get(Projeto, id)
 
     @staticmethod
-    def excluir():
-        projeto = Projeto.query.get(id)
-        db.session.delete(projeto)
-        db.session.commit()
+    def buscar_por_nome(nome):
+        return db.session.execute(select(Projeto).where(Projeto.nome == nome)).scalar_one_or_none()
+
+    @staticmethod
+    def salvar(projeto):
+        try:
+            db.session.add(projeto)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise
+        return projeto
+
+    @staticmethod
+    def excluir(projeto):
+        try:
+            db.session.delete(projeto)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise
 
     @staticmethod
     def concluidos():
-        return Projeto.query.filter_by(concluido=True).order_by(Projeto.nome).all()
-
-    @staticmethod
-    def alterar_status(id):
-        projeto = Projeto.query.get(id)
-        db.session.commit()
+        consulta = select(Projeto).where(Projeto.concluido.is_(True)).order_by(Projeto.nome)
+        return db.session.execute(consulta).scalars().all()
 
     @staticmethod
     def estatisticas():
-        total = Projeto.query.count()
-        concluidos = Projeto.query.filter_by(concluido=True).count()
-        departamentos = db.session.query(Projeto.departamento).distinct().count()
-
+        return {
+            "total_projetos": db.session.scalar(select(func.count()).select_from(Projeto)),
+            "concluidos": db.session.scalar(select(func.count()).select_from(Projeto).where(Projeto.concluido.is_(True))),
+            "departamentos": db.session.scalar(select(func.count(distinct(Projeto.departamento)))),
+        }

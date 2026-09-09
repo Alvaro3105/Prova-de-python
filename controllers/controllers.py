@@ -1,144 +1,119 @@
-from flask import request, jsonify
-from services.services import projetos 
-class controller():
+import math
+from flask import jsonify, request
+from services.services import ErroDeNegocio, ProjetoService
 
+
+def serializar(projeto, resumido=False):
+    dados = {
+        "id": projeto.id,
+        "nome": projeto.nome,
+        "responsavel": projeto.responsavel,
+        "orcamento": projeto.orcamento,
+    }
+    if not resumido:
+        dados["departamento"] = projeto.departamento
+        dados["concluido"] = projeto.concluido
+    return dados
+
+
+def validar_json():
+    dados = request.get_json(silent=True)
+    if not isinstance(dados, dict) or not dados:
+        raise ErroDeNegocio("JSON inválido")
+    return dados
+
+
+def validar_texto(dados, campo, mensagem, obrigatorio=False, limite=255):
+    if campo not in dados:
+        if obrigatorio:
+            raise ErroDeNegocio(mensagem)
+        return
+    valor = dados[campo]
+    if not isinstance(valor, str) or len(valor) < 3 or len(valor) > limite:
+        raise ErroDeNegocio(mensagem)
+
+
+def validar_dados(dados, cadastro=False):
+    validar_texto(dados, "nome", "Nome do projeto muito curto" if cadastro else "Nome inválido", cadastro, 120)
+    validar_texto(dados, "responsavel", "Responsável obrigatório" if cadastro else "Responsável inválido", cadastro, 100)
+    if "departamento" in dados and (not isinstance(dados["departamento"], str) or not dados["departamento"] or len(dados["departamento"]) > 80):
+        raise ErroDeNegocio("Departamento inválido")
+    if "orcamento" not in dados and cadastro:
+        raise ErroDeNegocio("Orçamento deve ser maior que zero")
+    if "orcamento" in dados:
+        try:
+            valor = float(dados["orcamento"])
+        except (TypeError, ValueError, OverflowError):
+            raise ErroDeNegocio("Orçamento deve ser maior que zero" if cadastro else "Orçamento inválido")
+        if not math.isfinite(valor) or valor <= 0:
+            raise ErroDeNegocio("Orçamento deve ser maior que zero" if cadastro else "Orçamento inválido")
+        dados["orcamento"] = valor
+    if "concluido" in dados and not isinstance(dados["concluido"], bool):
+        raise ErroDeNegocio("Concluído deve ser verdadeiro ou falso")
+    permitidos = {"nome", "responsavel", "departamento", "orcamento", "concluido"}
+    dados = {k: v for k, v in dados.items() if k in permitidos}
+    if cadastro:
+        dados.setdefault("departamento", "Geral")
+        dados.setdefault("concluido", False)
+    return dados
+
+
+def responder(funcao):
+    try:
+        return funcao()
+    except ErroDeNegocio as erro:
+        return jsonify({"erro": erro.mensagem}), erro.status
+
+
+class ProjetoController:
     @staticmethod
     def index():
-
-        resultado = []
-        for p in projetos:
-            resultado.append({
-                "id": p.id,
-                "nome": p.nome,
-                "responsavel": p.responsavel,
-                "departamento": p.departamento,
-                "orcamento": p.orcamento,
-                "concluido": p.concluido
-            })
-        return jsonify(resultado)
+        return responder(lambda: jsonify([serializar(p) for p in ProjetoService.listar(ordenar=True)]))
 
     @staticmethod
     def listar():
-        nome = request.args.get("nome")
-        departamento = request.args.get("departamento")
-        dados = []
-        for p in projetos:
-            dados.append({
-                "id": p.id,
-                "nome": p.nome,
-                "responsavel": p.responsavel,
-                "departamento": p.departamento,
-                "orcamento": p.orcamento,
-                "concluido": p.concluido
-            })
-        return jsonify(dados)
+        return responder(lambda: jsonify([serializar(p) for p in ProjetoService.listar(
+            request.args.get("nome"), request.args.get("departamento"))]))
 
     @staticmethod
     def buscar(id):
-            return jsonify({"erro": "Projeto não encontrado"}), 404
-
-        return jsonify({
-            "id": projeto.id,
-            "nome": projeto.nome,
-            "responsavel": projeto.responsavel,
-            "departamento": projeto.departamento,
-            "orcamento": projeto.orcamento,
-            "concluido": projeto.concluido
-        })
+        return responder(lambda: jsonify(serializar(ProjetoService.buscar(id))))
 
     @staticmethod
     def cadastrar():
-        dados = request.json
-        if not dados:
-            return jsonify({"erro": "JSON inválido"}), 400
-
-        if "nome" not in dados or len(dados["nome"]) < 3:
-            return jsonify({"erro": "Nome do projeto muito curto"}), 400
-
-        if "responsavel" not in dados or len(dados["responsavel"]) < 3:
-            return jsonify({"erro": "Responsável obrigatório"}), 400
-
-        if "orcamento" not in dados or float(dados["orcamento"]) <= 0:
-            return jsonify({"erro": "Orçamento deve ser maior que zero"}), 400
-
-        existe = Projeto.query.filter_by(nome=dados["nome"]).first()
-        if existe:
-            return jsonify({"erro": "Projeto já cadastrado"}), 400
-
-        projeto = Projeto()
-        projeto.nome = dados["nome"]
-        projeto.responsavel = dados["responsavel"]
-        projeto.departamento = dados.get("departamento", "Geral")
-        projeto.orcamento = float(dados["orcamento"])
-        projeto.concluido = dados.get("concluido", False)
-
-        return jsonify({"mensagem": "Projeto cadastrado", "id": projeto.id})
+        def executar():
+            dados = validar_dados(validar_json(), cadastro=True)
+            projeto = ProjetoService.cadastrar(dados)
+            return jsonify({"mensagem": "Projeto cadastrado", "id": projeto.id})
+        return responder(executar)
 
     @staticmethod
     def atualizar(id):
-        if projeto is None:
-            return jsonify({"erro": "Projeto não encontrado"}), 404
-
-        dados = request.json
-        if "nome" in dados:
-            if len(dados["nome"]) < 3:
-                return jsonify({"erro": "Nome inválido"}), 400
-
-            if outro and outro.id != projeto.id:
-                return jsonify({"erro": "Nome do projeto já utilizado"}), 400
-            projeto.nome = dados["nome"]
-
-        if "responsavel" in dados:
-            if len(dados["responsavel"]) < 3:
-                return jsonify({"erro": "Responsável inválido"}), 400
-            projeto.responsavel = dados["responsavel"]
-
-        if "departamento" in dados:
-            projeto.departamento = dados["departamento"]
-
-        if "orcamento" in dados:
-            if float(dados["orcamento"]) <= 0:
-                return jsonify({"erro": "Orçamento inválido"}), 400
-            projeto.orcamento = float(dados["orcamento"])
-
-        if "concluido" in dados:
-            projeto.concluido = dados["concluido"]
-
-        return jsonify({"mensagem": "Projeto atualizado"})
+        def executar():
+            projeto = ProjetoService.buscar(id)
+            dados = validar_dados(validar_json())
+            ProjetoService.atualizar(projeto.id, dados)
+            return jsonify({"mensagem": "Projeto atualizado"})
+        return responder(executar)
 
     @staticmethod
     def excluir(id):
-        if projeto is None:
-            return jsonify({"erro": "Projeto não encontrado"}), 404
-
-        return jsonify({"mensagem": "Projeto removido"})
+        def executar():
+            ProjetoService.excluir(id)
+            return jsonify({"mensagem": "Projeto removido"})
+        return responder(executar)
 
     @staticmethod
     def concluidos():
-        lista = []
-        for p in projetos:
-            lista.append({
-                "id": p.id,
-                "nome": p.nome,
-                "responsavel": p.responsavel,
-                "orcamento": p.orcamento
-            })
-        return jsonify(lista)
+        return responder(lambda: jsonify([serializar(p, resumido=True) for p in ProjetoService.concluidos()]))
 
     @staticmethod
     def alterar_status(id):
-        
-        if projeto is None:
-            return jsonify({"erro": "Projeto não encontrado"}), 404
-
-        projeto.concluido = not projeto.concluido
-
-        return jsonify({"mensagem": "Status alterado", "concluido": projeto.concluido})
+        def executar():
+            projeto = ProjetoService.alterar_status(id)
+            return jsonify({"mensagem": "Status alterado", "concluido": projeto.concluido})
+        return responder(executar)
 
     @staticmethod
     def estatisticas():
-        return jsonify({
-            "total_projetos": total,
-            "concluidos": concluidos,
-            "departamentos": departamentos
-        })
+        return responder(lambda: jsonify(ProjetoService.estatisticas()))
