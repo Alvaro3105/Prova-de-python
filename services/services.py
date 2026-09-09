@@ -1,93 +1,59 @@
-from repositories.Projeto import Projetos
-from models.Projeto import Projeto
+from models.models import Projeto
+from repositories.repositories import ProjetoRepository
 
-class services():
+
+class ErroDeNegocio(Exception):
+    def __init__(self, mensagem, status=400):
+        super().__init__(mensagem)
+        self.mensagem = mensagem
+        self.status = status
+
+
+class ProjetoService:
     @staticmethod
-    def listar_projetos():
-        return repositorio.listar_projetos()
+    def listar(nome=None, departamento=None, ordenar=False):
+        return ProjetoRepository.listar(nome, departamento, ordenar)
 
     @staticmethod
     def buscar(id):
-        return repositorio.buscar_projetos(id)
-    
-    @staticmethod
-    def cadastrar():
-        projeto.nome = dados["nome"]
-        projeto.responsavel = dados["responsavel"]
-        projeto.departamento = dados.get("departamento", "Geral")
-        projeto.orcamento = float(dados["orcamento"])
-        projeto.concluido = dados.get("concluido", False)
-
-        if not dados:
-            return jsonify({"erro": "JSON inválido"}), 
-        
-        if "nome" not in dados or len(dados["nome"]) < 3:
-            return jsonify({"erro": "Nome do projeto muito curto"}), 
-        
-        if "responsavel" not in dados or len(dados["responsavel"]) < 3:
-            return jsonify({"erro": "Responsável obrigatório"}),
-        
-        if "orcamento" not in dados or float(dados["orcamento"]) <= 0:
-             return jsonify({"erro": "Orçamento deve ser maior que zero"}), 
-    
-    @staticmethod
-    def atualizar(id):
+        projeto = ProjetoRepository.buscar(id)
         if projeto is None:
-        return jsonify({"erro": "Projeto não encontrado"}), 
+            raise ErroDeNegocio("Projeto não encontrado", 404)
+        return projeto
 
-        dados = request.json
+    @staticmethod
+    def cadastrar(dados):
+        if ProjetoRepository.buscar_por_nome(dados["nome"]):
+            raise ErroDeNegocio("Projeto já cadastrado")
+        projeto = Projeto(**dados)
+        return ProjetoRepository.salvar(projeto)
+
+    @staticmethod
+    def atualizar(id, dados):
+        projeto = ProjetoService.buscar(id)
         if "nome" in dados:
-            if len(dados["nome"]) < 3:
-                return jsonify({"erro": "Nome inválido"}),
+            outro = ProjetoRepository.buscar_por_nome(dados["nome"])
+            if outro is not None and outro.id != projeto.id:
+                raise ErroDeNegocio("Nome do projeto já utilizado")
+        for campo, valor in dados.items():
+            setattr(projeto, campo, valor)
+        return ProjetoRepository.salvar(projeto)
 
-            outro = Projeto.query.filter_by(nome=dados["nome"]).first()
-            if outro and outro.id != projeto.id:
-                return jsonify({"erro": "Nome do projeto já utilizado"}), 
-            projeto.nome = dados["nome"]
-
-        if "responsavel" in dados:
-            if len(dados["responsavel"]) < 3:
-                return jsonify({"erro": "Responsável inválido"}), 
-            projeto.responsavel = dados["responsavel"]
-
-        if "departamento" in dados:
-            projeto.departamento = dados["departamento"]
-
-        if "orcamento" in dados:
-            if float(dados["orcamento"]) <= 0:
-                return jsonify({"erro": "Orçamento inválido"}), 
-            projeto.orcamento = float(dados["orcamento"])
-
-        if "concluido" in dados:
-            projeto.concluido = dados["concluido"]
-
-    
     @staticmethod
     def excluir(id):
-        if projeto is None:
-        return jsonify({"erro": "Projeto não encontrado"})
+        projeto = ProjetoService.buscar(id)
+        ProjetoRepository.excluir(projeto)
 
     @staticmethod
     def concluidos():
-        for p in projetos:
-        lista.append({
-            "id": p.id,
-            "nome": p.nome,
-            "responsavel": p.responsavel,
-            "orcamento": p.orcamento
-        })
-    return jsonify(lista)
+        return ProjetoRepository.concluidos()
 
     @staticmethod
     def alterar_status(id):
-        if projeto is None:
-        return jsonify({"erro": "Projeto não encontrado"})
-
+        projeto = ProjetoService.buscar(id)
+        projeto.concluido = not projeto.concluido
+        return ProjetoRepository.salvar(projeto)
 
     @staticmethod
     def estatisticas():
-        return jsonify({
-        "total_projetos": total,
-        "concluidos": concluidos,
-        "departamentos": departamentos
-    })
+        return ProjetoRepository.estatisticas()

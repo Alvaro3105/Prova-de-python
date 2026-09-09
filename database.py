@@ -1,3 +1,4 @@
 from flask_sqlalchemy import SQLAlchemy
 
-db = SQLAlchemy(app)
+# A instância não depende da aplicação; evita importações circulares.
+db = SQLAlchemy()
